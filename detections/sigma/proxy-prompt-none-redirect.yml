@@ -1,0 +1,64 @@
+title: OAuth prompt=none Redirect to External Hosting Platform
+id: 9c4f2e7b-1d8a-4b3e-a567-2e9f8c1d4a73
+status: experimental
+description: |
+    Detects web proxy traffic where a user is redirected from an OAuth identity
+    provider endpoint to an external hosting platform with OAuth error parameters
+    in the URL. This pattern occurs when a prompt=none authorization request
+    fails and the identity provider redirects the user to the attacker's
+    registered redirect URI with error codes appended.
+    The presence of OAuth error parameters (error=, error_description=) in
+    the destination URL combined with a referrer from an identity provider
+    domain indicates the redirect originated from a silent authentication
+    failure.
+    This is a supporting signal. Cross-reference with mail gateway and
+    identity layer detections for higher confidence.
+references:
+    - https://medium.com/@ibrahimxibh/oauth-silent-authentication-abuse-in-microsoft-entra-id-the-protocol-mechanics-behind-modern-7cd2004829df
+    - https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
+    - https://www.rfc-editor.org/rfc/rfc9700#section-4.11.2
+author: Ibrahim Younes
+date: 2026/02/17
+modified: 2026/05/31
+tags:
+    - attack.initial_access
+    - attack.t1566.002
+    - attack.defense_evasion
+    - attack.t1071.001
+logsource:
+    category: proxy
+detection:
+    selection_external_destination:
+        c-uri|contains:
+            - '.workers.dev'
+            - '.pages.dev'
+            - '.netlify.app'
+            - '.vercel.app'
+            - '.herokuapp.com'
+            - '.surge.sh'
+            - '.github.io'
+            - '.gitlab.io'
+    selection_oauth_error_params:
+        c-uri|contains:
+            - 'error=interaction_required'
+            - 'error=login_required'
+            - 'error=consent_required'
+            - 'error=invalid_scope'
+            - 'error=account_selection_required'
+    selection_idp_referrer:
+        cs-referer|contains:
+            - 'login.microsoftonline.com'
+            - 'login.microsoft.com'
+            - 'login.live.com'
+            - 'accounts.google.com'
+    condition: selection_external_destination and (selection_oauth_error_params or selection_idp_referrer)
+falsepositives:
+    - Legitimate OAuth applications hosted on cloud platforms receiving
+      error redirects during normal authentication flows
+level: medium
+# NOTE: This rule depends on the proxy logging the HTTP Referer header
+# (cs-referer) and full request URI (c-uri). Verify your proxy logs
+# include these fields before deploying.
+# If your proxy does not log cs-referer, the rule can still fire on
+# selection_external_destination + selection_oauth_error_params alone,
+# but with higher false positive potential.

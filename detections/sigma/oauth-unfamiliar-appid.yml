@@ -1,0 +1,51 @@
+title: Unfamiliar OAuth Application in Non-Interactive Sign-In Logs
+id: 6b1d4e8a-3f7c-4a92-b158-9c2e5d7f3a61
+status: experimental
+description: |
+    Detects non-interactive sign-in events with "Interrupted" status from
+    Application IDs not present in the organization's approved application
+    baseline.
+    When a victim clicks a prompt=none phishing link, Entra ID logs the
+    event as a non-interactive sign-in with Interrupted status and no
+    visible error codes. The application name is attacker-controlled and
+    unreliable for detection. The Application ID is the one field the
+    attacker cannot spoof.
+    REQUIRES FURTHER TESTING: The Interrupted status and non-interactive
+    classification were confirmed during controlled POC testing with scopes
+    targeting Microsoft Graph. Behavior may vary with different scope
+    configurations, tenant policies, or Conditional Access settings.
+    Validate against your environment before deploying as an automated alert.
+references:
+    - https://medium.com/@ibrahimxibh/oauth-silent-authentication-abuse-in-microsoft-entra-id-the-protocol-mechanics-behind-modern-7cd2004829df
+    - https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
+author: Ibrahim Younes
+date: 2026/02/17
+modified: 2026/05/31
+tags:
+    - attack.initial_access
+    - attack.t1566.002
+    - attack.credential_access
+    - attack.t1078.004
+logsource:
+    product: azure
+    service: signinlogs
+detection:
+    selection:
+        IsInteractive: 'false'
+    selection_status:
+        Status.additionalDetails: 'Interrupted'
+    filter_known_apps:
+        AppId:
+            - '00000003-0000-0000-c000-000000000000'
+            - '00000002-0000-0ff1-ce00-000000000000'
+            - '00000003-0000-0ff1-ce00-000000000000'
+            - '00000006-0000-0ff1-ce00-000000000000'
+            - '04b07795-8ddb-461a-bbee-02f9e1bf7b46'
+            - '1950a258-227b-4e31-a9cf-717495945fc2'
+    condition: selection and selection_status and not filter_known_apps
+falsepositives:
+    - New third-party integrations not yet added to the approved AppId baseline
+    - Legitimate application misconfiguration causing transient failures
+level: medium
+
+

@@ -1,0 +1,94 @@
+// ============================================================================
+// DETECTION: Unfamiliar AppId in Non-Interactive Sign-In Logs
+// LAYER:     Identity / SIEM
+// SIGNAL:    MEDIUM (requires approved AppId baseline)
+// TABLES:    SigninLogs (Sentinel) or AADSignInEventsBeta (Defender XDR)
+// MITRE:     T1078.004 (Valid Accounts: Cloud Accounts)
+// ============================================================================
+// When a victim clicks a prompt=none phishing link, the sign-in event
+// appears in NON-INTERACTIVE sign-in logs with:
+//   - Status: Interrupted
+//   - Resource: Depends on attacker's configured scopes (see note below)
+//   - Error code: None visible in the log entry
+//   - Application name: Attacker-controlled (unreliable for detection)
+//   - Application ID: Reliable (attacker cannot spoof this)
+//
+// PREREQUISITE: Maintain an approved AppId list. Replace the static list
+// below with a Sentinel Watchlist or reference table.
+//
+// NOTE ON RESOURCE FIELD:
+// ResourceDisplayName depends on what scopes the attacker configured.
+// POC testing used Microsoft Graph scopes (openid, profile, User.Read),
+// so the resource showed "Microsoft Graph". An attacker using different
+// scopes would produce a different resource value. The query below
+// comments out the resource filter to avoid missing variants. Uncomment
+// to narrow results after validating in your environment.
+//
+// REQUIRES FURTHER TESTING:
+// The "Interrupted" status and non-interactive classification were
+// confirmed during controlled POC testing with a specific scope and
+// tenant configuration. Behavior may vary with different scope
+// configurations, tenant policies, or Conditional Access settings.
+// Validate against your environment before deploying as an automated
+// alert. Run as a hunting query first to establish a baseline.
+//
+// FALSE POSITIVES: Moderate. New third-party integrations or vendor
+// applications will trigger before being added to the baseline.
+// ============================================================================
+
+// --- SENTINEL (SigninLogs) ---
+
+let lookback = 7d;
+// Replace with _GetWatchlist('ApprovedOAuthApps') or your baseline source
+let approvedAppIds = dynamic([
+    "00000003-0000-0000-c000-000000000000",  // Microsoft Graph
+    "00000002-0000-0ff1-ce00-000000000000",  // Office 365 Exchange Online
+    "00000003-0000-0ff1-ce00-000000000000",  // Office 365 SharePoint Online
+    "00000006-0000-0ff1-ce00-000000000000",  // Microsoft Office
+    "04b07795-8ddb-461a-bbee-02f9e1bf7b46",  // Azure CLI
+    "1950a258-227b-4e31-a9cf-717495945fc2"   // Azure PowerShell
+    // Add your organization's approved Application IDs
+]);
+SigninLogs
+| where TimeGenerated > ago(lookback)
+| where IsInteractive == false
+| where AppId !in (approvedAppIds)
+// | where ResourceDisplayName == "Microsoft Graph"  // Uncomment after validating
+| where Status.additionalDetails == "Interrupted"
+    or Status has "Interrupted"  // Fallback if Status is ingested as string
+| summarize
+    EventCount = count(),
+    DistinctUsers = dcount(UserPrincipalName),
+    FirstSeen = min(TimeGenerated),
+    LastSeen = max(TimeGenerated),
+    AffectedUsers = make_set(UserPrincipalName, 10),
+    Resources = make_set(ResourceDisplayName, 5),
+    StatusDetails = make_set(Status.additionalDetails, 5),
+    IPAddresses = make_set(IPAddress, 5)
+    by AppId, AppDisplayName
+| sort by DistinctUsers desc, EventCount desc
+
+
+// --- DEFENDER XDR (AADSignInEventsBeta) ---
+// Uncomment below if using Defender XDR instead of Sentinel
+
+// let lookback = 7d;
+// let approvedAppIds = dynamic([
+//     "00000003-0000-0000-c000-000000000000",
+//     "00000002-0000-0ff1-ce00-000000000000",
+//     "00000003-0000-0ff1-ce00-000000000000"
+// ]);
+// AADSignInEventsBeta
+// | where Timestamp > ago(lookback)
+// | where IsInteractive == false
+// | where ApplicationId !in (approvedAppIds)
+// // | where ResourceDisplayName == "Microsoft Graph"  // Uncomment after validating
+// | summarize
+//     EventCount = count(),
+//     DistinctUsers = dcount(AccountUpn),
+//     FirstSeen = min(Timestamp),
+//     LastSeen = max(Timestamp),
+//     AffectedUsers = make_set(AccountUpn, 10),
+//     Resources = make_set(ResourceDisplayName, 5)
+//     by ApplicationId, Application
+// | sort by DistinctUsers desc, EventCount desc

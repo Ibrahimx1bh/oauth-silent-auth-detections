@@ -1,0 +1,72 @@
+// ============================================================================
+// DETECTION: Single AppId Across Multiple Accounts (Campaign Detection)
+// LAYER:     Identity / SIEM
+// SIGNAL:    HIGH (when threshold is met)
+// TABLES:    SigninLogs (Sentinel) or AADSignInEventsBeta (Defender XDR)
+// MITRE:     T1566.002, T1078.004
+// ============================================================================
+// Detects a single OAuth AppId generating non-interactive sign-in events
+// with "Interrupted" status across multiple user accounts within a short
+// time window. This pattern is consistent with a phishing campaign
+// distributing the same OAuth lure URL to multiple recipients.
+//
+// TUNING:
+//   - DistinctUserThreshold: adjust based on organization size
+//   - TimeWindow: adjust based on expected campaign velocity
+//   - Note: bin() creates fixed time buckets. A campaign spanning a
+//     bucket boundary (e.g., 12:50 to 1:10) splits across two bins,
+//     each potentially below threshold. Consider overlapping queries
+//     or reducing the threshold to compensate.
+//
+// REQUIRES FURTHER TESTING:
+// The "Interrupted" status and non-interactive classification were
+// confirmed during controlled POC testing with scopes targeting
+// Microsoft Graph. Behavior may vary with different scope configurations,
+// tenant policies, or Conditional Access settings. Run as a hunting
+// query first to establish baseline noise before deploying as an alert.
+//
+// FALSE POSITIVES: Low when threshold is met. A legitimate unknown app
+// failing across 5+ distinct users in 1 hour with Interrupted status
+// is unusual but possible during new app rollouts.
+// ============================================================================
+
+let lookback = 24h;
+let TimeWindow = 1h;
+let DistinctUserThreshold = 5;
+let approvedAppIds = dynamic([
+    "00000003-0000-0000-c000-000000000000",  // Microsoft Graph
+    "00000002-0000-0ff1-ce00-000000000000",  // Office 365 Exchange Online
+    "00000003-0000-0ff1-ce00-000000000000",  // Office 365 SharePoint Online
+    "00000006-0000-0ff1-ce00-000000000000",  // Microsoft Office
+    "04b07795-8ddb-461a-bbee-02f9e1bf7b46",  // Azure CLI
+    "1950a258-227b-4e31-a9cf-717495945fc2"   // Azure PowerShell
+    // Add your organization's approved Application IDs
+]);
+SigninLogs
+| where TimeGenerated > ago(lookback)
+| where IsInteractive == false
+| where AppId !in (approvedAppIds)
+| where Status.additionalDetails == "Interrupted"
+    or Status has "Interrupted"  // Fallback if Status is ingested as string
+| summarize
+    DistinctUsers = dcount(UserPrincipalName),
+    TotalEvents = count(),
+    FirstSeen = min(TimeGenerated),
+    LastSeen = max(TimeGenerated),
+    AffectedUsers = make_set(UserPrincipalName, 20),
+    Resources = make_set(ResourceDisplayName, 5),
+    IPAddresses = make_set(IPAddress, 10)
+    by AppId, AppDisplayName, bin(TimeGenerated, TimeWindow)
+| where DistinctUsers >= DistinctUserThreshold
+| extend CampaignDuration = LastSeen - FirstSeen
+| project
+    TimeWindow = TimeGenerated,
+    AppId,
+    AppDisplayName,
+    DistinctUsers,
+    TotalEvents,
+    CampaignDuration,
+    Resources,
+    AffectedUsers,
+    IPAddresses
+| sort by DistinctUsers desc

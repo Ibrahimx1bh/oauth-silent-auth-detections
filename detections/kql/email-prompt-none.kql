@@ -1,0 +1,56 @@
+// ============================================================================
+// DETECTION: OAuth prompt=none in Email-Delivered URLs
+// LAYER:     Mail Gateway
+// SIGNAL:    CRITICAL
+// TABLES:    EmailUrlInfo, EmailEvents
+// MITRE:     T1566.002 (Phishing: Spearphishing Link)
+// ============================================================================
+// Silent SSO requests (prompt=none) are generated programmatically by
+// client-side libraries and execute in hidden iframes or background HTTP
+// requests. They are never delivered as clickable email links.
+// A prompt=none URL in email content has no legitimate use case.
+//
+// FALSE POSITIVES: Very low. Possible FP from misconfigured applications
+// leaking internal URLs into automated email notifications. Investigate
+// regardless.
+// ============================================================================
+
+let lookback = 7d;
+let oauthEndpoints = dynamic([
+    "login.microsoftonline.com",
+    "login.microsoft.com",
+    "accounts.google.com"
+]);
+EmailUrlInfo
+| where Timestamp > ago(lookback)
+| where Url has_any (oauthEndpoints)
+| where Url has "prompt=none" or Url has "prompt%3Dnone" or Url has "prompt%3dnone"
+| join kind=inner (
+    EmailEvents
+    | where Timestamp > ago(lookback)
+    | where DeliveryAction in ("Delivered", "Junked")
+    | project
+        NetworkMessageId,
+        SenderFromAddress,
+        RecipientEmailAddress,
+        Subject,
+        DeliveryAction,
+        EmailTimestamp = Timestamp
+) on NetworkMessageId
+| extend
+    ClientId = extract(@"client_id=([a-f0-9\-]{36})", 1, Url),
+    ScopeValue = extract(@"[&?]scope=([^&]+)", 1, Url),
+    HasRedirectUrl = Url has "redirect_url=",
+    HasRedirectUri = Url has "redirect_uri="
+| project
+    EmailTimestamp,
+    SenderFromAddress,
+    RecipientEmailAddress,
+    Subject,
+    DeliveryAction,
+    ClientId,
+    ScopeValue,
+    HasRedirectUrl,
+    HasRedirectUri,
+    Url
+| sort by EmailTimestamp desc

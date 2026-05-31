@@ -1,0 +1,53 @@
+title: OAuth Silent Auth Campaign - Single AppId Across Multiple Accounts
+id: 4e8c1f3a-7b2d-4a96-b512-9d3f6e8a2c17
+status: experimental
+description: |
+    Detects a single OAuth Application ID generating non-interactive sign-in
+    events with "Interrupted" status across multiple user accounts within a
+    short time window. This pattern is consistent with a phishing campaign
+    distributing the same OAuth prompt=none lure URL to multiple recipients.
+    This rule requires aggregation logic in the SIEM correlation engine.
+    The condition below defines the per-event match. Implement count-based
+    thresholds (e.g., 5+ distinct users per AppId within 1 hour) in your
+    SIEM's native correlation or analytics rules.
+    REQUIRES FURTHER TESTING: The Interrupted status and non-interactive
+    classification were confirmed during controlled POC testing. Behavior
+    may vary with different scope configurations, tenant policies, or
+    Conditional Access settings. Run as a hunting query first to establish
+    baseline noise in your environment.
+references:
+    - https://medium.com/@ibrahimxibh/oauth-silent-authentication-abuse-in-microsoft-entra-id-the-protocol-mechanics-behind-modern-7cd2004829df
+    - https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
+author: Ibrahim Younes
+date: 2026/02/17
+modified: 2026/05/31
+tags:
+    - attack.initial_access
+    - attack.t1566.002
+    - attack.credential_access
+    - attack.t1078.004
+logsource:
+    product: azure
+    service: signinlogs
+detection:
+    selection:
+        IsInteractive: 'false'
+    selection_status:
+        Status.additionalDetails: 'Interrupted'
+    filter_known_apps:
+        AppId:
+            - '00000003-0000-0000-c000-000000000000'
+            - '00000002-0000-0ff1-ce00-000000000000'
+            - '00000003-0000-0ff1-ce00-000000000000'
+            - '00000006-0000-0ff1-ce00-000000000000'
+            - '04b07795-8ddb-461a-bbee-02f9e1bf7b46'
+            - '1950a258-227b-4e31-a9cf-717495945fc2'
+    condition: selection and selection_status and not filter_known_apps
+    # AGGREGATION (implement in your SIEM):
+    #   Group by: AppId
+    #   Count distinct: UserPrincipalName >= 5
+    #   Time window: 1 hour
+falsepositives:
+    - New third-party integrations onboarded across multiple users simultaneously
+    - Legitimate application rollout causing clustered Interrupted events
+level: medium

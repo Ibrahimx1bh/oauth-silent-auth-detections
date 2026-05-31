@@ -1,0 +1,63 @@
+// ============================================================================
+// DETECTION: OAuth prompt=none with redirect_url Misdirection in Email
+// LAYER:     Mail Gateway
+// SIGNAL:    CRITICAL
+// TABLES:    EmailUrlInfo, EmailEvents, UrlClickEvents
+// MITRE:     T1566.002, T1036.005
+// ============================================================================
+// Detects OAuth URLs in emails containing both prompt=none AND the
+// non-standard redirect_url parameter (not redirect_uri).
+//
+// The redirect_url parameter is not recognized by Entra ID and is silently
+// ignored. Attackers use it to embed a trusted-looking domain (e.g.,
+// google.com) in the URL for social engineering while the actual redirect
+// is controlled by the application's registered redirect URI.
+//
+// No legitimate OAuth implementation uses redirect_url as a parameter name.
+// The standard parameter is redirect_uri.
+//
+// FALSE POSITIVES: Near zero.
+// ============================================================================
+
+let lookback = 14d;
+let suspiciousEmails =
+    EmailUrlInfo
+    | where Timestamp > ago(lookback)
+    | where Url has "login.microsoftonline.com" or Url has "login.microsoft.com"
+    | where Url has "prompt=none" or Url has "prompt%3Dnone"
+    | where Url has "redirect_url=" or Url has "redirect_url%3D"
+    | extend
+        ClientId = extract(@"client_id=([a-f0-9\-]{36})", 1, Url),
+        RedirectUrlValue = extract(@"redirect_url=([^&]+)", 1, Url)
+    | project NetworkMessageId, Url, ClientId, RedirectUrlValue, UrlLocation;
+suspiciousEmails
+| join kind=inner (
+    EmailEvents
+    | where Timestamp > ago(lookback)
+    | project
+        NetworkMessageId,
+        SenderFromAddress,
+        RecipientEmailAddress,
+        Subject,
+        DeliveryAction,
+        EmailTimestamp = Timestamp
+) on NetworkMessageId
+| join kind=leftouter (
+    UrlClickEvents
+    | where Timestamp > ago(lookback)
+    | where ActionType == "ClickAllowed" or IsClickedThrough == true
+    | project NetworkMessageId, ClickTimestamp = Timestamp, IsClickedThrough
+) on NetworkMessageId
+| extend UserClicked = isnotempty(ClickTimestamp)
+| project
+    EmailTimestamp,
+    SenderFromAddress,
+    RecipientEmailAddress,
+    Subject,
+    DeliveryAction,
+    ClientId,
+    RedirectUrlValue,
+    UserClicked,
+    ClickTimestamp,
+    Url
+| sort by EmailTimestamp desc

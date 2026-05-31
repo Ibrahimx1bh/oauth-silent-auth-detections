@@ -1,0 +1,38 @@
+title: OAuth Silent Authentication URL in Email Content
+id: 8f3a7c12-4b9e-4d6f-a523-1c7e9b5d8a34
+status: experimental
+description: |
+    Detects OAuth/OIDC authorization URLs containing prompt=none delivered via
+    email. Silent SSO requests are generated programmatically by client-side
+    libraries (MSAL.js, ADAL.js) in hidden iframes or background HTTP requests.
+    They are never constructed as clickable email links. A prompt=none URL in
+    email content has no legitimate use case.
+references:
+    - https://medium.com/@ibrahimxibh/oauth-silent-authentication-abuse-in-microsoft-entra-id-the-protocol-mechanics-behind-modern-7cd2004829df
+    - https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
+    - https://www.rfc-editor.org/rfc/rfc9700#section-4.11.2
+author: Ibrahim Younes
+date: 2026/02/17
+modified: 2026/05/31
+tags:
+    - attack.initial_access
+    - attack.t1566.002
+    - attack.defense_evasion
+    - attack.t1036.005
+logsource:
+    category: email
+    service: o365
+detection:
+    selection_idp:
+        url|contains:
+            - 'login.microsoftonline.com'
+            - 'login.microsoft.com'
+    selection_prompt:
+        url|contains:
+            - 'prompt=none'
+            - 'prompt%3Dnone'
+            - 'prompt%3dnone'
+    condition: selection_idp and selection_prompt
+falsepositives:
+    - Misconfigured applications leaking internal OAuth URLs into automated email notifications (extremely rare)
+level: critical

@@ -1,0 +1,42 @@
+title: OAuth Silent Authentication with redirect_url Misdirection in Email
+id: 2d5e8f19-7a3b-4c1d-b896-3f2a1e7c9d45
+status: experimental
+description: |
+    Detects OAuth authorization URLs in emails containing both prompt=none
+    and the non-standard redirect_url parameter. The standard OAuth parameter
+    is redirect_uri. Entra ID does not recognize redirect_url and silently
+    ignores it. Attackers use this to embed a trusted-looking domain in the
+    URL for social engineering while the actual redirect is controlled by the
+    application's registered redirect URI configuration.
+    The combination of prompt=none with redirect_url (wrong parameter name)
+    is highly specific to this attack technique.
+references:
+    - https://medium.com/@ibrahimxibh/oauth-silent-authentication-abuse-in-microsoft-entra-id-the-protocol-mechanics-behind-modern-7cd2004829df
+author: Ibrahim Younes
+date: 2026/02/17
+modified: 2026/05/31
+tags:
+    - attack.initial_access
+    - attack.t1566.002
+    - attack.defense_evasion
+    - attack.t1036.005
+logsource:
+    category: email
+    service: o365
+detection:
+    selection_idp:
+        url|contains:
+            - 'login.microsoftonline.com'
+            - 'login.microsoft.com'
+    selection_prompt:
+        url|contains:
+            - 'prompt=none'
+            - 'prompt%3Dnone'
+    selection_misdirection:
+        url|contains:
+            - 'redirect_url='
+            - 'redirect_url%3D'
+    condition: selection_idp and selection_prompt and selection_misdirection
+falsepositives:
+    - None expected. No legitimate OAuth implementation uses redirect_url as a parameter name.
+level: critical
