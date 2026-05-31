@@ -34,14 +34,14 @@ This means detection at the identity layer cannot rely on error codes. It must r
 
 | # | File | Layer | Signal | Description |
 |---|---|---|---|---|
-| 1 | `email-prompt-none.kql` | Mail Gateway | **High** | `prompt=none` in email-delivered OAuth URLs |
+| 1 | `email-prompt-none.kql` | Mail Gateway | **Critical** | `prompt=none` in email-delivered OAuth URLs |
 | 2 | `email-redirect-url-misdirection.kql` | Mail Gateway | **Critical** | `prompt=none` + non-standard `redirect_url` parameter |
 | 3 | `identity-unfamiliar-appid.kql` | Identity | **Medium** | Unfamiliar AppId with Interrupted status in non-interactive logs |
-| 4 | `identity-campaign-detection.kql` | Identity | **High** | Same AppId across multiple accounts in short window |
-| 5 | `oauth-silent-auth-email.yml` | Mail Gateway | **High** | Sigma: `prompt=none` in email URLs |
+| 4 | `identity-campaign-detection.kql` | Identity | **Medium** | Same AppId across multiple accounts in short window |
+| 5 | `oauth-silent-auth-email.yml` | Mail Gateway | **Critical** | Sigma: `prompt=none` in email URLs |
 | 6 | `oauth-redirect-url-misdirection.yml` | Mail Gateway | **Critical** | Sigma: `prompt=none` + `redirect_url` misdirection |
 | 7 | `oauth-unfamiliar-appid.yml` | Identity | **Medium** | Sigma: Unfamiliar AppId in non-interactive sign-ins |
-| 8 | `oauth-campaign-detection.yml` | Identity | **High** | Sigma: Same AppId across multiple accounts (campaign) |
+| 8 | `oauth-campaign-detection.yml` | Identity | **Medium** | Sigma: Same AppId across multiple accounts (campaign) |
 | 9 | `proxy-prompt-none-redirect.yml` | Network | **Medium** | Sigma: OAuth error redirect to external hosting platform |
 
 ## MITRE ATT&CK Mapping
